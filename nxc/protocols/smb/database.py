@@ -188,6 +188,20 @@ class database(BaseDB):
             UniqueConstraint("domain"),
         )
 
+    class ModuleResult(BaseTable):
+        __tablename__ = "module_results"
+        id = Column(Integer)
+        host_id = Column(Integer)
+        module_name = Column(String)
+        key = Column(String)
+        value = Column(String)
+
+        __table_args__ = (
+            PrimaryKeyConstraint("id"),
+            ForeignKeyConstraint(["host_id"], ["hosts.id"]),
+            UniqueConstraint("host_id", "module_name", "key"),
+        )
+
     @staticmethod
     def db_schema(db_conn):
         BaseTable.metadata.create_all(db_conn)
@@ -204,6 +218,18 @@ class database(BaseDB):
         self.DpapiBackupkeyTable = self.reflect_table(self.DpapiBackupKey)
         self.ConfChecksTable = self.reflect_table(self.ConfCheck)
         self.ConfChecksResultsTable = self.reflect_table(self.ConfCheckResult)
+        self.ModuleResultsTable = self._reflect_or_create(self.ModuleResult)
+
+    def _reflect_or_create(self, table_class):
+        """Reflect table if exists, otherwise create it (migration for new tables)."""
+        from sqlalchemy import inspect as sa_inspect
+        inspector = sa_inspect(self.db_engine)
+        if table_class.__tablename__ not in inspector.get_table_names():
+            nxc_logger.debug(f"Table '{table_class.__tablename__}' not found, creating it (migration)")
+            with self.db_engine.connect() as conn:
+                table_class.__table__.create(bind=conn, checkfirst=True)
+                conn.commit()
+        return self.reflect_table(table_class)
 
     # pull/545
     def add_host(
@@ -899,3 +925,26 @@ class database(BaseDB):
         if updated_ids:
             nxc_logger.debug(f"add_check_result() - Check Results IDs Updated: {updated_ids}")
             return updated_ids
+
+    def add_module_result(self, host_id, module_name, key, value):
+        """Save a module result, upsert by (host_id, module_name, key)."""
+        q = select(self.ModuleResultsTable).filter(
+            self.ModuleResultsTable.c.host_id == host_id,
+            self.ModuleResultsTable.c.module_name == module_name,
+            self.ModuleResultsTable.c.key == key,
+        )
+        select_results = self.db_execute(q).all()
+        new_row = {"host_id": host_id, "module_name": module_name, "key": key, "value": value}
+        updated_ids = self.insert_data(self.ModuleResultsTable, select_results, **new_row)
+        if updated_ids:
+            nxc_logger.debug(f"add_module_result() - IDs Updated: {updated_ids}")
+        return updated_ids
+
+    def get_module_results(self, host_id=None, module_name=None):
+        """Get module results, optionally filtered by host_id and/or module_name."""
+        q = select(self.ModuleResultsTable)
+        if host_id:
+            q = q.filter(self.ModuleResultsTable.c.host_id == host_id)
+        if module_name:
+            q = q.filter(self.ModuleResultsTable.c.module_name == module_name)
+        return self.db_execute(q).all()

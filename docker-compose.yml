@@ -1,0 +1,12 @@
+services:
+  nxc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: netexec:latest
+    network_mode: host
+    volumes:
+      - ./data:/data
+    working_dir: /data
+    stdin_open: true
+    tty: true

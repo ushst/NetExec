@@ -1,5 +1,5 @@
 from nxc.helpers.misc import validate_ntlm
-from nxc.nxcdb import DatabaseNavigator, print_table, print_help
+from nxc.nxcdb import DatabaseNavigator, print_table, print_help, write_list
 from termcolor import colored
 import functools
 
@@ -258,8 +258,33 @@ class navigator(DatabaseNavigator):
         print_help(help_string)
 
     def do_hosts(self, line):
-        filter_term = line.strip()
+        args = line.strip().split()
+        filter_term = ""
 
+        # hosts os <pattern> [export <file>]
+        if args and args[0].lower() == "os":
+            if len(args) < 2:
+                print("[-] Usage: hosts os <pattern>  (e.g. hosts os server)")
+                return
+            os_filter = " ".join(args[1:])
+            # check for trailing export
+            export_file = None
+            if "export" in args:
+                idx = args.index("export")
+                if idx + 1 < len(args):
+                    export_file = args[idx + 1]
+                    os_filter = " ".join(args[1:idx])
+            all_hosts = self.db.get_hosts()
+            hosts = [h for h in all_hosts if h[4] and os_filter.lower() in str(h[4]).lower()]
+            if export_file:
+                ips = [h[1] for h in hosts]
+                write_list(export_file, ips)
+                print(f"[+] {len(ips)} IPs exported to {export_file}")
+            else:
+                self.display_hosts(hosts)
+            return
+
+        filter_term = line.strip()
         if filter_term == "":
             hosts = self.db.get_hosts()
             self.display_hosts(hosts)
@@ -412,7 +437,7 @@ class navigator(DatabaseNavigator):
 
     def help_hosts(self):
         help_string = """
-        hosts [dc|spooler|zerologon|petitpotam|filter_term]
+        hosts [dc|spooler|zerologon|petitpotam|os <pattern>|filter_term]
         By default prints all hosts
         Table format:
         | 'HostID', 'IP', 'Hostname', 'Domain', 'OS', 'DC', 'SMBv1', 'Signing', 'Spooler', 'Zerologon', 'PetitPotam' |
@@ -421,11 +446,9 @@ class navigator(DatabaseNavigator):
             spooler - list all hosts with Spooler service enabled
             zerologon - list all hosts vulnerable to zerologon
             petitpotam - list all hosts vulnerable to petitpotam
-            filter_term - filters hosts with filter_term
-                If a single host is returned (e.g. `hosts 15`, it prints the following tables:
-                    Host | 'HostID', 'IP', 'Hostname', 'Domain', 'OS', 'DC', 'SMBv1', 'Signing', 'Spooler', 'Zerologon', 'PetitPotam' |
-                    Credential(s) with Admin Access | 'CredID', 'CredType', 'Domain', 'UserName', 'Password' |
-                Otherwise, it prints the default host table from a `like` query on the `ip` and `hostname` columns
+            os <pattern> - filter hosts by OS string (e.g. 'os server', 'os windows 10', 'os samba')
+            os <pattern> export <file> - same but export IPs to file
+            filter_term - filters hosts by ip/hostname
         """
         print_help(help_string)
 
@@ -682,6 +705,40 @@ class navigator(DatabaseNavigator):
                     Member of Group(s) | 'GroupID', 'Domain', 'Name' |
                     Admin Access to Host(s) | 'HostID', 'IP', 'Hostname', 'Domain', 'OS'
                 Otherwise, it prints the default credential table from a `like` query on the `username` column
+        """
+        print_help(help_string)
+
+    def do_module_results(self, line):
+        args = line.strip().split()
+        module_name = args[0] if args else None
+
+        try:
+            results = self.db.get_module_results(module_name=module_name)
+        except Exception:
+            print("[-] module_results table not found, run a module first to initialize it")
+            return
+
+        if not results:
+            print("[-] No module results found")
+            return
+
+        data = [["HostID", "IP", "Module", "Check", "Result"]]
+        for row in results:
+            _, host_id, mod, key, value = row
+            hosts = self.db.get_hosts(filter_term=str(host_id))
+            ip = hosts[0][1] if hosts else str(host_id)
+            data.append([host_id, ip, mod, key, value])
+        print_table(data, title="Module Results")
+
+    def help_module_results(self):
+        help_string = """
+        module_results [module_name]
+        Show saved module results. Optionally filter by module name.
+        Examples:
+            module_results
+            module_results internet-check
+            module_results enum_av
+            module_results proxy-enum
         """
         print_help(help_string)
 

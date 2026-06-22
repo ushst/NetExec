@@ -23,8 +23,8 @@ RUN apt update && \
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --default-toolchain stable
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-RUN git clone https://github.com/Pennyw0rth/NetExec.git . \
-    && pip install .
+COPY . .
+RUN pip install .
 
 FROM python:3.13-slim-bookworm
 

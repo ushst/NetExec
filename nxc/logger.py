@@ -18,6 +18,7 @@ def parse_debug_args():
     debug_parser = argparse.ArgumentParser(add_help=False)
     debug_parser.add_argument("--debug", action="store_true")
     debug_parser.add_argument("--verbose", action="store_true")
+    debug_parser.add_argument("--results-only", action="store_true")
     args, _ = debug_parser.parse_known_args()
     return args
 
@@ -133,7 +134,8 @@ class NXCAdapter(logging.LoggerAdapter):
         """Display text to console, formatted for nxc"""
         msg, kwargs = self.format(f"{colored('[*]', 'blue', attrs=['bold'])} {msg}", kwargs)
         text = Text.from_ansi(msg)
-        nxc_console.print(text, *args, **kwargs)
+        if not parse_debug_args().results_only:
+            nxc_console.print(text, *args, **kwargs)
         self.log_console_to_file(text, *args, **kwargs)
 
     @no_debug

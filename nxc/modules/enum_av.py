@@ -36,7 +36,7 @@ class NXCModule:
         results = self._detect_installed_services(context, connection, target)
         self.detect_running_processes(context, connection, results)
 
-        self.dump_results(results, context)
+        self.dump_results(results, context, connection)
 
     def _get_target(self, connection):
         return connection.host if not connection.kerberos else f"{connection.hostname}.{connection.domain}"
@@ -74,9 +74,12 @@ class NXCModule:
         except Exception as e:
             context.log.fail(str(e))
 
-    def dump_results(self, results, context):
+    def dump_results(self, results, context, connection=None):
         if not results:
             context.log.highlight("Found NOTHING!")
+            if connection:
+                host_id = connection.db.get_hosts(connection.host)[0][0]
+                connection.db.add_module_result(host_id, "enum_av", "result", "NONE")
             return
 
         for item, data in results.items():
@@ -88,6 +91,13 @@ class NXCModule:
             elif "pipes" in data:
                 message += " RUNNING"
             context.log.highlight(message)
+
+            if connection:
+                try:
+                    host_id = connection.db.get_hosts(connection.host)[0][0]
+                    connection.db.add_module_result(host_id, "enum_av", item, message.replace("Found ", ""))
+                except Exception as e:
+                    context.log.debug(f"enum_av: failed to save to db: {e}")
 
 
 class LsaLookupNames:
